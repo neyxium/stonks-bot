@@ -16,12 +16,15 @@ Stonks Bot is a Discord bot designed to manage transactions between users. It ma
    cd stonks-bot
 
 2. Install dependencies:
+    ```bash
     pip install -r requirements.txt
 
 3. Create a `.env` file in the project directory and add the following:
+    ```bash
     API_KEY=your_discord_bot_api_key BOT_PASS=your_restart_command_password
 
 4. Run the bot:
+    ```bash
     python src/main.py
 
 
