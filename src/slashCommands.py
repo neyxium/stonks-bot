@@ -4,6 +4,7 @@ from API import getPass
 from datetime import datetime
 import discord
 from discord import app_commands
+from discord.ui import View, Button
 
 data = load() or {"user_data": {}, "transactions": {}}
 user_data = data.get("user_data", {})
@@ -68,15 +69,15 @@ def register_slash_commands(bot: discord.Client):
         description="Receive money from someone"
     )
     async def slash_receive(interaction: discord.Interaction, value: float, user: discord.Member):
-        sender = interaction.user
-        receiver = user
+        receiver = interaction.user
+        sender = user
         receiver_id = str(receiver.id)
         sender_id = str(sender.id)
 
-        user_data[receiver_id] = user_data.get(receiver_id, 0) - abs(value)
-        user_data[sender_id] = user_data.get(sender_id, 0) + abs(value)
+        user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
+        user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
 
-        add_transaction(sender_id, receiver_id, abs(value))
+        add_transaction(receiver_id, sender_id, abs(value))
         await interaction.response.send_message(
             f"{sender} gave {value}€ to {receiver}. \n"
             f"{sender} has {user_data[sender_id]}€. \n"
@@ -96,7 +97,7 @@ def register_slash_commands(bot: discord.Client):
         user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
         user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
 
-        add_transaction(sender_id, receiver_id, abs(value))
+        add_transaction(receiver_id, sender_id, abs(value))
         await interaction.response.send_message(
             f"{sender} gave {value}€ to {receiver}. \n"
             f"{sender} has {user_data[sender_id]}€. \n"
@@ -132,11 +133,28 @@ def register_slash_commands(bot: discord.Client):
         target_user = user or interaction.user
         user_id = str(target_user.id)
         user_data[user_id] = 0
+
+        related_users = set()
+        if user_id in transactions:
+            for tx in transactions[user_id]:
+                related_users.add(tx["target"])
+            del transactions[user_id]
+
+        for related_user in related_users:
+            for tx in transactions.get(related_user, []):
+                if tx["target"] == user_id:
+                    if tx["type"] == "gave":
+                        user_data[related_user] = user_data.get(related_user, 0) + tx["value"]
+                    elif tx["type"] == "received":
+                        user_data[related_user] = user_data.get(related_user, 0) - tx["value"]
+            transactions[related_user] = [tx for tx in transactions.get(related_user, []) if tx["target"] != user_id]
+
         save_user_data()
+
         if user:
-            await interaction.response.send_message(f"{target_user.mention}'s counter has been reset to 0.")
+            await interaction.response.send_message(f"{target_user.mention}'s counter and all related transactions have been reset to 0.")
         else:
-            await interaction.response.send_message("Your counter has been reset to 0.")
+            await interaction.response.send_message("Your counter and all related transactions have been reset to 0.")
 
     @bot.tree.command(
         name="value", 
@@ -166,7 +184,10 @@ def register_slash_commands(bot: discord.Client):
                 await interaction.response.send_message("You have no transaction history.")
             return
 
-        history = "**Your Transaction History:**\n"
+        if user:
+            history = f"**{target_user.mention}'s Transaction History:**\n"
+        else:
+            history = "**Your Transaction History:**\n"
         for tx in user_transactions:
             direction = "to" if tx["type"] == "gave" else "from"
             target = tx["target"]
@@ -192,28 +213,85 @@ def register_slash_commands(bot: discord.Client):
             await interaction.response.send_message("Everything was not reset :)")
     
     @bot.tree.command(
-        name="status",
-        description="Shows the final balances of users you interacted with"
+    name="status",
+    description="Shows the final balances of users you interacted with in embed"
     )
     async def slash_status(interaction: discord.Interaction, user: discord.Member = None):
         target_user = user or interaction.user
         user_id = str(target_user.id)
         balances = calculate_final_balances(user_id)
+
         if not balances:
             if user:
                 await interaction.response.send_message(f"{target_user.mention} has no transactions to display.")
             else:
-                await interaction.response.send_message("You have no transactions to display.")
+                await interaction.response.send_message(
+                    f"You have no transactions to display.\nCurrent balance: {user_data.get(user_id, 0)}€"
+                )
             return
 
-        if user:
-            status_message = f"**{target_user.mention}'s Transaction Summary:**\n"
-        else:
-            status_message = "**Your Transaction Summary:**\n"
+        # Create the embed for the status message
+        embed = discord.Embed(
+            title=f"{target_user.display_name}'s Transaction Summary" if user else "Your Transaction Summary",
+            description="Here's how much you owe or are owed by others:",
+            color=discord.Color.blue()
+        )
+
         for target_id, balance in balances.items():
-            if target_id != user_id:  # Izpustimo samega sebe
-                status_message += f"<@{target_id}>: {balance}€\n"
-        await interaction.response.send_message(status_message)
+            if target_id != user_id:  # Exclude self
+                mention = f"<@{target_id}>"  # Prepričaj se, da imaš pravilen ID
+                if(balance > 0):
+                    embed.add_field(name="User:", value=f"{mention} owes: {balance}€", inline=False)
+                else:
+                    embed.add_field(name="User:", value=f"{mention} is owed: {abs(balance)}€", inline=False)
+
+        embed.set_footer(text=f"Current balance: {user_data.get(user_id, 0)}€")
+
+    # Create a button for resetting
+        class StatusView(View):
+            def __init__(self):
+                super().__init__(timeout=None)  # Disable timeout
+
+            @discord.ui.button(label="Reset Transactions", style=discord.ButtonStyle.danger)
+            async def reset_button(self, interaction: discord.Interaction, button: Button):
+                if interaction.user.id != target_user.id:
+                    await interaction.response.send_message(
+                        "You are not authorized to reset these transactions.", ephemeral=True
+                    )
+                    return
+
+            # Reset all transactions for the user
+                related_users = set()
+                if user_id in transactions:
+                    for tx in transactions[user_id]:
+                        related_users.add(tx["target"])
+                    del transactions[user_id]
+
+                for related_user in related_users:
+                    for tx in transactions.get(related_user, []):
+                        if tx["target"] == user_id:
+                            if tx["type"] == "gave":
+                                user_data[related_user] = user_data.get(related_user, 0) + tx["value"]
+                            elif tx["type"] == "received":
+                                user_data[related_user] = user_data.get(related_user, 0) - tx["value"]
+                    transactions[related_user] = [
+                        tx for tx in transactions.get(related_user, []) if tx["target"] != user_id
+                    ]
+
+            # Reset the user's counter
+                user_data[user_id] = 0
+                save_user_data()
+
+            # Update the interaction with a success message
+                await interaction.response.edit_message(
+                    content=f"{target_user.mention}'s transactions and balance have been reset.",
+                    embed=None,
+                    view=None
+                )
+
+    # Send the embed with the reset button
+        await interaction.response.send_message(embed=embed, view=StatusView())
+
 
     @bot.tree.command(name="help", description="Displays the help menu")
     async def slash_help(interaction: discord.Interaction):
