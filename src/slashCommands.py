@@ -29,6 +29,9 @@ def add_transaction(sender_id, receiver_id, value):
         "value": value,
         "timestamp": timestamp
     })
+    
+    user_data[sender_id] = user_data.get(sender_id, 0) - value
+    user_data[receiver_id] = user_data.get(receiver_id, 0) + value
     save_user_data()
 
 def calculate_final_balances(user_id):
@@ -74,10 +77,10 @@ def register_slash_commands(bot: discord.Client):
         receiver_id = str(receiver.id)
         sender_id = str(sender.id)
 
-        user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
-        user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
+        #user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
+        #user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
 
-        add_transaction(receiver_id, sender_id, abs(value))
+        add_transaction(sender_id, receiver_id, abs(value))
         await interaction.response.send_message(
             f"{sender} gave {value}€ to {receiver}. \n"
             f"{sender} has {user_data[sender_id]}€. \n"
@@ -94,10 +97,10 @@ def register_slash_commands(bot: discord.Client):
         receiver_id = str(receiver.id)
         sender_id = str(sender.id)
 
-        user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
-        user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
+        #user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
+        #user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
 
-        add_transaction(receiver_id, sender_id, abs(value))
+        add_transaction(sender_id, receiver_id, abs(value))
         await interaction.response.send_message(
             f"{sender} gave {value}€ to {receiver}. \n"
             f"{sender} has {user_data[sender_id]}€. \n"
@@ -115,8 +118,8 @@ def register_slash_commands(bot: discord.Client):
         sender_id = str(sender.id)
 
         value = get_value_from_reason(reason)
-        user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
-        user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
+        #user_data[receiver_id] = user_data.get(receiver_id, 0) + abs(value)
+        #user_data[sender_id] = user_data.get(sender_id, 0) - abs(value)
         
         add_transaction(receiver_id, sender_id, abs(value))
         await interaction.response.send_message(
@@ -126,28 +129,36 @@ def register_slash_commands(bot: discord.Client):
         )
 
     @bot.tree.command(
-        name="reset",
-        description="Resets your counter or mentioned user's counter"
+    name="reset",
+    description="Resets your counter or mentioned user's counter"
     )
     async def slash_reset(interaction: discord.Interaction, user: discord.Member = None):
         target_user = user or interaction.user
         user_id = str(target_user.id)
-        user_data[user_id] = 0
 
+    # Pridobimo vse povezane uporabnike
         related_users = set()
         if user_id in transactions:
             for tx in transactions[user_id]:
                 related_users.add(tx["target"])
-            del transactions[user_id]
+            del transactions[user_id]  # Počisti vse transakcije za user_id
 
+    # Prilagodi stanja za povezane uporabnike
         for related_user in related_users:
+            updated_transactions = []
             for tx in transactions.get(related_user, []):
                 if tx["target"] == user_id:
+                # Prilagajanje stanja za povezane uporabnike
                     if tx["type"] == "gave":
                         user_data[related_user] = user_data.get(related_user, 0) + tx["value"]
                     elif tx["type"] == "received":
                         user_data[related_user] = user_data.get(related_user, 0) - tx["value"]
-            transactions[related_user] = [tx for tx in transactions.get(related_user, []) if tx["target"] != user_id]
+                else:
+                    updated_transactions.append(tx)  # Ohranimo druge transakcije
+            transactions[related_user] = updated_transactions
+
+    # Resetiraj stanje za uporabnika
+        user_data[user_id] = 0
 
         save_user_data()
 
@@ -155,6 +166,7 @@ def register_slash_commands(bot: discord.Client):
             await interaction.response.send_message(f"{target_user.mention}'s counter and all related transactions have been reset to 0.")
         else:
             await interaction.response.send_message("Your counter and all related transactions have been reset to 0.")
+
 
     @bot.tree.command(
         name="value", 
