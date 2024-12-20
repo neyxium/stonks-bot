@@ -8,7 +8,6 @@ import threading
 
 API_KEY = getAPI_KEY()
 
-# Discord bot setup
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix=".", intents=intents)
 
@@ -23,7 +22,6 @@ async def on_ready():
 
 register_slash_commands(bot)
 
-# Flask app for Heroku port binding
 app = Flask(__name__)
 
 @app.route("/")
@@ -31,10 +29,10 @@ def home():
     return "Bot is running!"
 
 def run_flask():
-    port = int(os.getenv("PORT", 5000))  # Use the $PORT provided by Heroku
+    port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-# Start Flask in a separate thread
+
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()  # Start Flask server
-    bot.run(API_KEY)  # Start Discord bot
+    threading.Thread(target=run_flask).start()
+    bot.run(API_KEY)
