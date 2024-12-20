@@ -1,14 +1,13 @@
-# Uporabi uradno Python sliko
-FROM python:3.9-slim
+FROM python:3.9
 
-# Nastavi delovni direktorij
+# Delovna mapa
 WORKDIR /app
 
-# Kopiraj vse datoteke v delovni direktorij
+# Kopiraj datoteke
 COPY . /app
 
 # Namesti odvisnosti
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Nastavi privzeti ukaz za zagon bota
+# Zaženi aplikacijo
 CMD ["python", "src/main.py"]
