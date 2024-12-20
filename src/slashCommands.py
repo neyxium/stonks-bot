@@ -318,7 +318,7 @@ def register_slash_commands(bot: discord.Client):
     async def slash_help(interaction: discord.Interaction):
         help_menu = (
             "## Help Menu\n"
-            "- /hello - Greets the user\n"
+            "- /hello - Greets the user with ping\n"
             "- /receive [value] [member] - Increment your money and decrement mentioned user's money\n"
             "- /give [value] [member] - Decrement your money and increment mentioned user's money\n"
             "- /pay [reason] [member] - Pay someone else's meal example for reason: eatsmart, mm, burger, kitajska\n"
